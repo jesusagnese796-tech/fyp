@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>班级抽人</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #ff4757;
+            --success: #2ed573;
+            --accent: #feca57;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #2c3e50 0%, #000000 100%);
+            color: white;
+        }
+
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2.5rem;
+            border-radius: 30px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            width: 85%;
+            max-width: 600px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .info-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+            color: #aaa;
+            letter-spacing: 1px;
+        }
+
+        #display-area {
+            font-size: 4rem;
+            font-weight: 900;
+            min-height: 220px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .name-item {
+            background: rgba(255,255,255,0.1);
+            padding: 5px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        /* 抽取人数按钮 */
+        .selector-label { margin-bottom: 10px; display: block; font-size: 0.9rem; opacity: 0.7; }
+        .mode-selector {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 30px;
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+            transform: scale(1.1);
+        }
+
+        #main-btn {
+            padding: 18px;
+            font-size: 1.6rem;
+            cursor: pointer;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            width: 100%;
+            font-weight: bold;
+            box-shadow: 0 10px 20px rgba(255, 71, 87, 0.3);
+            transition: 0.3s;
+        }
+
+        #main-btn:active { transform: scale(0.98); }
+
+        .file-upload {
+            margin-top: 25px;
+            font-size: 0.75rem;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="info-bar">
+        <span>剩余: <span id="count-tag">0</span> 人</span>
+        <span id="status-tag">未载入名单</span>
+    </div>
+
+    <div id="display-area">点击开始</div>
+
+    <span class="selector-label">设置抽取人数</span>
+    <div class="mode-selector">
+        <button class="mode-btn active" onclick="setCount(1, this)">1</button>
+        <button class="mode-btn" onclick="setCount(2, this)">2</button>
+        <button class="mode-btn" onclick="setCount(3, this)">3</button>
+        <button class="mode-btn" onclick="setCount(4, this)">4</button>
+        <button class="mode-btn" onclick="setCount(5, this)">5</button>
+    </div>
+
+    <button id="main-btn" onclick="toggle()">开始</button>
+
+    <div class="file-upload">
+        <input type="file" id="excel-file" accept=".xlsx, .xls" />
+    </div>
+</div>
+
+<script>
+    let allNames = []; 
+    let pool = [];     
+    let drawCount = 1; 
+    let timer = null;
+    let isRolling = false;
+
+    const displayArea = document.getElementById('display-area');
+    const mainBtn = document.getElementById('main-btn');
+    const countTag = document.getElementById('count-tag');
+    const statusTag = document.getElementById('status-tag');
+
+    function setCount(num, btn) {
+        if (isRolling) return;
+        drawCount = num;
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        displayArea.innerHTML = `<span style="font-size:1.5rem; opacity:0.5">准备抽取 ${num} 人</span>`;
+    }
+
+    document.getElementById('excel-file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            allNames = jsonData.flat().map(n => n?.toString().trim()).filter(n => n);
+            pool = [...allNames];
+            countTag.innerText = pool.length;
+            statusTag.innerText = "✅ 名单已就绪";
+            displayArea.innerText = "准备好了";
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    function toggle() {
+        if (allNames.length === 0) return alert("请先上传 Excel 名单！");
+
+        if (isRolling) {
+            // 停止
+            clearInterval(timer);
+            isRolling = false;
+            mainBtn.innerText = '开始';
+            mainBtn.style.backgroundColor = 'var(--primary)';
+
+            const winners = Array.from(document.querySelectorAll('.name-item')).map(el => el.innerText);
+            winners.forEach(name => {
+                const idx = pool.indexOf(name);
+                if (idx > -1) pool.splice(idx, 1);
+            });
+
+            countTag.innerText = pool.length;
+            document.querySelectorAll('.name-item').forEach(el => el.style.color = 'var(--accent)');
+            
+            if (pool.length < drawCount && pool.length > 0) {
+                statusTag.innerText = "⚠️ 剩余人数不足下次抽取";
+            } else if (pool.length === 0) {
+                alert("所有人已抽完，即将自动重置名单！");
+                pool = [...allNames];
+                countTag.innerText = pool.length;
+                statusTag.innerText = "✅ 名单已重置";
+            }
+        } else {
+            // 开始
+            if (pool.length < drawCount) {
+                alert(`剩余人数 (${pool.length}) 不足 ${drawCount} 人，已自动为您重置名单。`);
+                pool = [...allNames];
+            }
+            isRolling = true;
+            mainBtn.innerText = '停止';
+            mainBtn.style.backgroundColor = 'var(--success)';
+
+            timer = setInterval(() => {
+                displayArea.innerHTML = '';
+                let tempPool = [...pool];
+                let selected = [];
+                for(let i=0; i < Math.min(drawCount, tempPool.length); i++) {
+                    const randomIdx = Math.floor(Math.random() * tempPool.length);
+                    selected.push(tempPool.splice(randomIdx, 1)[0]);
+                }
+                selected.forEach(name => {
+                    const span = document.createElement('span');
+                    span.className = 'name-item';
+                    span.innerText = name;
+                    if (drawCount >= 4) span.style.fontSize = '2.5rem';
+                    displayArea.appendChild(span);
+                });
+            }, 60);
+        }
+    }
+</script>
+</body>
+</html>
